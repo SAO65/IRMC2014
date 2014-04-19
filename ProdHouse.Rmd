@@ -1,0 +1,239 @@
+Title : The Italian Crisis and Producer Households Debt: a Source of Stability? A Reproducible Research
+==============================================================
+Stefano Olgiati, Gilberto Bronzini, Alessandro Danovi 
+-----------------------------------------------------------------
+
+_University of Bergamo_
+-----------------------------------------------------------------
+
+### Legenda and Reproducible Data Source
+
+LEGENDA BANCA D'ITALIA TDB30486_DOMI_ENG.TXT  
+
+> ENTE_SEGN  REPORTING INSTITUTION  
+3691030	BANKS, FINANCIAL COMPANIES AND OTHER INSTITUTIONS REPORTING TO THE CCR  
+
+> VOCESOTVOC | PHENOMENA OBSERVED  
+351122133	LOAN FACILITIES (EXCLUDING ADJUSTED BAD DEBTS) : CREDIT USED  
+351122141	LOAN FACILITIES (EXCLUDING ADJUSTED BAD DEBTS) : NUMBER OF BORROWERS  
+035120163	QUARTERLY DEFALUT RATES FOR LOAN FACILITIES : NUMER OF BORROWERS)  
+035120363	QUARTERLY DEFAULT RATES FOR LOAN FACILITIES : CREDIT USED  
+351121433	QUARTERLY FLOW - ADJUSTED BAD DEBTS AT T FROM PERFORMING LOANS AT T-1: AMOUNT  
+351121441	QUARTERLY FLOW - ADJUSTED BAD DEBTS AT T FROM PERFORMING LOANS AT T-1:BORROWERS  
+
+> CLASSE_UTI	TOTAL CREDIT USED (SIZE CLASSES)  
+1006	500,000 EUROS AND MORE  
+1005	FROM >= 125,000 TO < 500,000 EUROS  
+1004	LESS THAN 125,000 EUROS  
+9904	TOTAL (>=0)  
+
+> SETCON	CUSTOMER SECTORS AND SEGMENTS OF ECONOMIC ACTIVITY  
+7015	CONSUMER HOUSEHOLDS  
+0026	FINANCIAL COMPANIES OTHER THAN MONETARY FINANCIAL INSTITUTIONS  
+0001	GENERAL GOVERNMENT  
+7006	NON-FINANCIAL CORPORATIONS  
+7009	NON-PROFIT INSTITUTIONS SERVING HOUSEHOLDS AND UNCLASSIFIABLE UNITS  
+7010	PRODUCER HOUSEHOLDS  
+4015	TOTAL RESIDENT SECTOR EXCLUDING MFIS  
+
+Download data from Banca d'Italia Public Online Database BIP Online: URI "http://bip.bancaditalia.it/4972unix/pls/4972unix_cartridge/scaricapkg.frameS?lang=ENG&p_tavola=TDB30486&da_dove=&dat_agg=&P1_VARPIANO_VAL=035120163]00001]3691030]&P1_VARCELLA=VALORE]&P1_VARRIGA=DATA_OSSER]&P1_VARCOLONNA=CLASSE_UTI]&P1_VARPIANO=VOCESOTVOC]SETCON]ENTE_SEGN]&P1_IDENTREPORT=2248&P1_OPZIONI=00D&pNumCol=4&pNumRow=25&pPagUtente=NO&pvFuoriPiano=&id_sessione=2905&pvUtenza=&pvValuta="
+
+Choose option:
+2. Data: whole table (*)
+
+Installing R packages for analysis and synthesis
+
+```{r}
+require(data.table)
+require(ggplot2)
+require(MASS)
+require(markdown)
+require(knitr)
+library(Quandl)
+```
+
+```{r hide}
+input.data = read.csv("/Users/Stefanoolgiati/Desktop/IRMC2014/TDB30486_ENG_ALL_INPUT/TDB30486_EURO_ENG.csv")
+head(input.data)
+tail(input.data)
+```
+
+
+### Parsing data, creating the data frame and calculating ratios for Households and Non-financial Corporations Credit and Bad Debts in Italy: 1996-2013
+
+```{r}
+raw.data = data.frame("SEGMENT"=input.data$SETCON,
+                      "PHENOMENA" = input.data$VOCESOTVOC, 
+                      "SIZE_CLASS" = input.data$CLASSE_UTI, 
+                      "DATE" = as.Date(input.data$DATA_OSSER, "%d/%m/%Y"),
+                      "VALUE" = input.data$VALORE)
+total.data = raw.data[raw.data$SIZE_CLASS %in% c("9904"),]
+```
+
+Extracting data on producer households
+
+```{r}
+households.producer.data = total.data[total.data$SEGMENT %in% c("7010"),]
+loan.amount.producer.data= households.producer.data[households.producer.data$PHENOMENA %in% c("351122133"),]
+loan.borrowers.producer.data= households.producer.data[households.producer.data$PHENOMENA %in% c("351122141"),]
+default.amount.producer.data= households.producer.data[households.producer.data$PHENOMENA %in% c("351121433"),]
+default.borrowers.producer.data= households.producer.data[households.producer.data$PHENOMENA %in% c("351121441"),]
+```
+
+Extracting data on non-financial corporations (NFC)
+
+```{r}
+NFC.data = total.data[total.data$SEGMENT %in% c("7006"),]
+loan.amount.NFC.data= NFC.data[NFC.data$PHENOMENA %in% c("351122133"),]
+loan.borrowers.NFC.data= NFC.data[NFC.data$PHENOMENA %in% c("351122141"),]
+default.amount.NFC.data= NFC.data[NFC.data$PHENOMENA %in% c("351121433"),]
+default.borrowers.NFC.data= NFC.data[NFC.data$PHENOMENA %in% c("351121441"),]
+```
+
+Making a new data frame with producer households and NFC
+
+```{r}
+data.df.reverse = data.frame("Date"=loan.amount.producer.data$DATE, 
+                             "Credit_Amount_Producer"=loan.amount.producer.data$VALUE, 
+                             "Credit_Borrowers_Producer"=loan.borrowers.producer.data$VALUE, 
+                             "Default_Amount_Producer"=default.amount.producer.data$VALUE,
+                             "Default_Borrowers_Producer"=default.borrowers.producer.data$VALUE,
+                              "Credit_Amount_NFC"=loan.amount.NFC.data$VALUE, 
+                             "Credit_Borrowers_NFC"=loan.borrowers.NFC.data$VALUE, 
+                             "Default_Amount_NFC"=default.amount.NFC.data$VALUE,
+                             "Default_Borrowers_NFC"=default.borrowers.NFC.data$VALUE)
+```
+
+Defining the ratio of per capita credit and bad debts between NFC and producer households
+
+$credit.NFC.percapita=Credit Amount NFC/Credit Borrowers NFC$
+$default.NFC.percapita=Default Amount NFC/Default Borrowers NFC$
+$credit.producers.percapita=Credit Amount Producer/Credit Borrowers Producer$
+$default.producers.percapita=Default Amount Producer/Default Borrowers Producer$
+
+Defining the ratio of per capita credit and bad debts between NFC and producer households
+
+$$credit.ratio=credit.NFC.percapita/credit.producers.percapita.$$
+$$baddebt.ratio=baddebt.NFC.percapita/baddebt.producers.percapita$$
+
+Calculating the ratio of per capita credit between NFC and producer households
+
+```{r}
+credit.producers.percapita = (data.df.reverse[,"Credit_Amount_Producer"] / data.df.reverse[,"Credit_Borrowers_Producer"])
+credit.NFC.percapita = (data.df.reverse[,"Credit_Amount_NFC"] / data.df.reverse[,"Credit_Borrowers_NFC"])
+credit.ratio = credit.NFC.percapita / credit.producers.percapita
+```
+
+Calculating the ratio of per capita bad debts between NFC and producer households
+
+```{r}
+baddebt.producers.percapita = (data.df.reverse[,"Default_Amount_Producer"] / data.df.reverse[,"Default_Borrowers_Producer"])
+baddebt.NFC.percapita = (data.df.reverse[,"Default_Amount_NFC"] / data.df.reverse[,"Default_Borrowers_NFC"])
+baddebt.ratio = baddebt.NFC.percapita / baddebt.producers.percapita
+```
+
+Calculating the average default rates and standard deviation
+
+```{r}
+defaultrate.producers = (data.df.reverse[,"Default_Amount_Producer"] / data.df.reverse[,"Credit_Amount_Producer"])
+defaultrate.NFC = (data.df.reverse[,"Default_Amount_NFC"] / data.df.reverse[,"Credit_Amount_NFC"])
+summary(defaultrate.producers)
+variationCoefficient.producers=sd(defaultrate.producers) / mean(defaultrate.producers)
+variationCoefficient.producers
+summary(defaultrate.NFC)
+variationCoefficient.NFC=sd(defaultrate.NFC) / mean(defaultrate.NFC)
+variationCoefficient.NFC
+
+qqplot(defaultrate.producers, defaultrate.NFC)
+abline(c(0,0), c(1,1), col='red')
+```
+
+
+
+Making syhthesis data frame of per capita credit, per capita bad debt and ratios
+
+```{r}
+syn.data.reverse.df = data.frame("Date"=loan.amount.producer.data$DATE,
+                                       "Per_Capita_Credit_NFC" = credit.NFC.percapita,
+                                       "Per_Capita_Credit_Producers" = credit.producers.percapita,
+                                       "Credit_Ratio"= credit.ratio,
+                                       "Per_Capita_Baddebts_NFC" = baddebt.NFC.percapita,
+                                       "Per_Capita_Baddebts_Producers" = baddebt.producers.percapita,
+                                       "Baddebt_Ratio"= baddebt.ratio)
+```
+
+Reversing data frame: head = begin_date and tail = end_date
+
+```{r}
+syn.data.df = syn.data.reverse.df[order(loan.amount.producer.data$DATE),]
+syn.data.dtable = as.data.table(syn.data.df)
+```
+
+### Summary of parsed Data
+
+```{r}
+summary(syn.data.dtable)
+```
+
+Plots
+---------------------------------------
+
+Plotting the time series of credit.ratio with quadratic fit
+
+```{r}
+lm.fit.credit.ratio = lm(credit.ratio ~ poly(loan.amount.producer.data$DATE, 5))
+qplot(loan.amount.producer.data$DATE, credit.ratio,
+      geom = c("point", "smooth"),
+      method = "rlm",
+      formula = y ~ poly(x, 5),
+      main="Per capita Credit Ratio in Italy: 1996-2013 \n Non-financial Corporatio/Producer Households",
+      xlab = "Year",
+      ylab = "Per capita Credit Ratio")
+confint(lm.fit.credit.ratio)
+```
+
+Plotting the time series of baddebt.ratio with quadratic fit
+
+```{r}
+lm.fit.baddebt.ratio = lm(baddebt.ratio ~ poly(loan.amount.producer.data$DATE, 5))
+qplot(loan.amount.producer.data$DATE, baddebt.ratio,
+      geom = c("point", "smooth"),
+      method = "rlm",
+      formula = y ~ poly(x, 5),
+      main="Per capita Bad Debts Ratio in Italy: 1996-2013 \n Non-financial Corporatio/Producer Households",
+      xlab = "Year",
+      ylab = "Per capita Bad Debt Ratio")
+confint(lm.fit.baddebt.ratio)
+```
+
+QQ plot of credit.ratio, baddebt.ratio
+
+```{r}
+qqplot(credit.ratio, 
+       baddebt.ratio, 
+       cex.main=0.85, 
+       main="QQ Plot \n Per capita Credit/Bad Debt  Ratio in Italy: 1996-2013 \n Non-financial Corporations/Producer Households")
+abline(c(0,0), c(1,1), col='red')
+```
+
+Summary Statistics, Robustness and Confidence Intervals
+------------------------------------------------
+
+```{r}
+summary(lm.fit.credit.ratio)
+summary(lm.fit.baddebt.ratio)
+```
+
+### Saving to .csv file
+
+```{r}
+write.csv(syn.data.dtable, "/Users/Stefanoolgiati/Desktop/IRMC2014/TDB30486_ENG_ALL_OUTPUT/TDB30486_EURO_ENG.csv")
+```
+
+References
+------------------------------------------------
+1. EU, Small Business Act 2012: Italy's facts and figures, 2013.
+2. Italian National Institute of Statistics, Annual Report 2013: The state of the Nation, 2013
+3. Bank of Italy, Annual Report 2012, 2013
+
+*Copyright Stefano Olgiati  2013-12-08*
